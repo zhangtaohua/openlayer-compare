@@ -19,7 +19,11 @@
         @drop.prevent="leftBoxDropHandle"
         @dragleave.prevent="leftBoxDragleaveHandle"
       ></div>
-      <div v-else class="row_nw_center_center image_left_box image_box_hidden"></div>
+      <div v-else class="row_nw_center_center image_left_box image_box_hidden">
+        <div class="row_nw_center_center image_list_show_box">
+          <img class="image" :src="leftImageInfo.imageInfo.url">
+        </div>
+      </div>
 
 
       <div v-if="imageDomControl.isShowRightBox" class="row_nw_center_center image_right_box"
@@ -28,7 +32,11 @@
         @drop.prevent="rightBoxDropHandle"
         @dragleave.prevent="rightBoxDragleaveHandle"
       ></div>
-      <div v-else class="row_nw_center_center image_right_box image_box_hidden"></div>
+      <div v-else class="row_nw_center_center image_right_box image_box_hidden">
+        <div class="row_nw_center_center image_list_show_box">
+          <img class="image" :src="rightImageInfo.imageInfo.url">
+        </div>
+      </div>
 
       <div class="col_nw_fs_center image_list_box">
         <div v-for="image in imageInfos" :key="'ol_image_' + image.id"
@@ -40,7 +48,12 @@
           >
         </div>
       </div>
+    </div>
 
+    <div v-show="rollerControl.isShowRoller"
+      id="roller_mouse" 
+      class="roller_line"  
+    >
     </div>
 
   </div>
@@ -57,7 +70,7 @@ import { defineComponent, onMounted, reactive, toRefs, ref, computed, watch } fr
 import {  OpenLayerMapControl,
           OpenLayerStaticImages, OpenLayerPathLine, 
           initOpenLayerCampareMap,
-          getLngLatFromEvent, getRectanglePathExtent
+          getLngLatFromEvent, getRectanglePathExtent, getMousePositionControl
         } from '/@/hooks/openLayer/openLayerCompare'
 
 import {getLngLatFromText, calibrateOpenLayerLngLat, geoMeter2Lat, geoMeter2Lng } from '/@/utils/common/geoCommon'
@@ -97,6 +110,10 @@ export default defineComponent({
       isShowListBox: true
     })
 
+    const rollerControl = reactive({
+      isShowRoller: false
+    })
+
     let openLayersHandler:Map;
     let pointerInteraction:PointerInteraction;
     let mapControlHandler:OpenLayerMapControl;
@@ -130,7 +147,6 @@ export default defineComponent({
 
     let dropedImageCounter = ref(0)
 
-
     onMounted(() => {
       init()
     })
@@ -151,6 +167,7 @@ export default defineComponent({
 
     function hiddenAllImageBox() {
       imageDomControl.isShowMainBox = false
+      rollerControl.isShowRoller = true
     }
 
     function init() {
@@ -357,7 +374,10 @@ export default defineComponent({
       
     return {
       imageDomControl,
+      rollerControl,
       ...toRefs(mapControlStatus),
+      leftImageInfo,
+      rightImageInfo,
       leftBoxDragEnterHandle,
       leftBoxDragoverHandle,
       leftBoxDropHandle,
@@ -455,6 +475,16 @@ export default defineComponent({
     width: 98%;
     height: auto;
     border-radius: 12px;
+  }
+
+  .roller_line {
+    width: 10px;
+    height: 100vh;
+    border: 1px solid red;
+    background-color: red;
+    position: fixed;
+    top: 0;
+    left: 50%;
   }
 
 

@@ -22,6 +22,10 @@ import TileLayer from 'ol/layer/Tile';
 import WTMSTileGrid from 'ol/tilegrid/WMTS'
 import { getWidth, getTopLeft } from 'ol/extent'
 
+import MousePosition from 'ol/control/MousePosition';
+import {createStringXY} from 'ol/coordinate';
+
+
 import '/@/assets/style/openlayer.css';
 
 import {getLngLatFromText, calibrateOpenLayerLngLat, geoMeter2Lat, geoMeter2Lng } from '/@/utils/common/geoCommon'
@@ -422,11 +426,21 @@ export class OpenLayerMapControl {
 }
 
 export function initOpenLayerCampareMap(minMapLevel:number, maxMapLevel: number) {
+  const mousePositionControl = new MousePosition({
+    coordinateFormat: createStringXY(6),
+    projection: 'EPSG:3857',
+    // comment the following two lines to have the mouse position
+    // be placed within the map.
+    // className: '',
+    // target: document.getElementById('roller_mouse'),
+  })
+
+
   const controls = olControl.defaults({
     attribution: false,
     zoom: false,
     rotate: false
-  }).extend([]);
+  }).extend([mousePositionControl]);
 
   const mapExtent = olProj.transformExtent([-180, -84.5, 180, 84.5], 'EPSG:4326', 'EPSG:3857');
 
@@ -453,4 +467,18 @@ export function getLngLatFromEvent(event:MapBrowserEvent<UIEvent>) {
   const {longitude, latitude} = calibrateOpenLayerLngLat(lngLat[0], lngLat[1]);
   const lngLatRes = getLngLatFromText(String(longitude), String(latitude));
   return lngLatRes;
+}
+
+
+export function getMousePositionControl(id:string, projection:string='EPSG:3857', precision:number=6) {
+  const mousePositionControl = new MousePosition({
+    coordinateFormat: createStringXY(precision),
+    projection: projection,
+    // comment the following two lines to have the mouse position
+    // be placed within the map.
+    // className: '',
+    target: document.getElementById(id),
+  })
+
+  return mousePositionControl;
 }
