@@ -1,0 +1,100 @@
+
+/* 颜色变量 */
+
+/* 行为相关颜色 */
+$rj-color-default: #333;
+$rj-color-primary: #409EFF;
+$rj-color-success: #4cd964;
+$rj-color-warning: #f0ad4e;
+$rj-color-error: #dd524d;
+
+$rj-color-white: #FFF;
+$rj-color-black: #000;
+
+/* 文字基本颜色 */
+$rj-text-color-default: #333;//基本色
+$rj-text-color-primary: #409EFF;
+$rj-text-color-success: #4cd964;
+$rj-text-color-warning: #f0ad4e;
+$rj-text-color-error: #dd524d;
+$rj-text-color-inverse: #fff;//反色
+$rj-text-color-white: #fff;//反色
+$rj-text-color-grey: #666;	//辅助灰色，如加载更多的提示信息
+$rj-text-color-info: #999;	//辅助灰色，如加载更多的提示信息
+$rj-text-color-placeholder: #909090;
+$rj-text-color-disable:#82899E;
+
+/* 背景颜色 */
+$rj-bg-color-white: #ffffff;
+$rj-bg-color-grey: #f8f8f8;
+$rj-bg-color-hover: #f1f1f1;//点击状态颜色
+$rj-bg-color-black: #000000;
+$rj-bg-color-deep-blue: #001C3F;
+$rj-bg-color-opacity-black: rgba(10, 10, 10, 0.5);
+$rj-bg-color-mask: rgba(0, 0, 0, 0.5);//遮罩颜色
+
+/* 边框颜色 */
+$rj-border-color: #999;
+$rj-border-bottom-color: rgba(250, 250, 250, 0.5);
+$rj-border-color-primary: #4CA6FF;
+$rj-border-color-disable: #DCDFE6;
+
+/* 主按钮 */
+$rj-mainbtn-bg-color-normal: #409EFF;
+$rj-mainbtn-bg-color-hover: #66B1FF;
+$rj-mainbtn-bg-color-click: #3A8EE6;
+$rj-mainbtn-bg-color-disable: #F5F7FA;
+
+/* 尺寸变量 */
+/* 文字尺寸 */
+$rj-font-size-xxxsm: 8px;
+$rj-font-size-xxsm: 10px;
+$rj-font-size-xsm: 12px;
+$rj-font-size-sm: 14px;
+$rj-font-size-base: 16px;
+$rj-font-size-lg: 18px;
+$rj-font-size-xlg: 20px;
+$rj-font-size-xxlg: 22px;
+$rj-font-size-xxxlg: 24px;
+$rj-font-size-xxxxlg: 26px;
+
+$rj-font-size-huge: 32px;
+$rj-font-size-xhuge: 34px;
+$rj-font-size-xxhuge: 36px;
+$rj-font-size-xxxhuge: 38px;
+$rj-font-size-xxxxhuge: 40px;
+$rj-font-size-xxxxxhuge: 42px;
+
+
+/* 图片尺寸 */
+$rj-icon-size-sm: 20px;
+$rj-icon-size-base: 25px;
+$rj-icon-size-lg: 40px;
+
+/* Border Radius */
+$rj-border-radius-sm: 2px;
+$rj-border-radius-base: 3px;
+$rj-border-radius-lg: 5px;
+$rj-border-radius-circle: 50%;
+
+/* 水平间距 */
+$rj-spacing-row-sm: 10px;
+$rj-spacing-row-base: 20px;
+$rj-spacing-row-lg: 30px;
+
+/* 垂直间距 */
+$rj-spacing-col-sm: 8px;
+$rj-spacing-col-base: 16px;
+$rj-spacing-col-lg: 24px;
+
+/* 透明度 */
+$rj-opacity-disabled: 0.3; // 组件禁用态的透明度
+
+/* 文章场景相关 */
+$rj-color-title: #2C405A; // 文章标题颜色
+$rj-font-size-title:20px;
+$rj-color-subtitle: #555555; // 二级标题颜色
+$rj-font-size-subtitle:18px;
+$rj-color-paragraph: #3F536E; // 文章段落颜色
+$rj-font-size-paragraph:16px;
+
