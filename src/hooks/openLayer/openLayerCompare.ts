@@ -39,7 +39,6 @@ export class OpenLayerStaticImages {
     const { extents } = image
 
     const imageExtents = olProj.transformExtent(extents, 'EPSG:4326', 'EPSG:3857')
-    console.log("extents",image)
     const staticImagesVectorSource = new ImageStatic({
       // attributions: '© <a href="http://xkcd.com/license.html">xkcd</a>',
       url: image.url,
@@ -169,6 +168,100 @@ export class OpenLayerStaticImages {
     }
   }
 }
+
+export class OpenLayerPathLine {
+  openLayersHandler:Map;
+  openLayerPathLines:OpenlayerVectorLayersDataInfo = {};
+
+  constructor(openLayersHandler:Map) {
+    this.openLayersHandler = openLayersHandler
+  }
+
+  add(pathLine:PathLineDataInfo) {
+    if(!pathLine.paths.length) {
+      return
+    }
+
+    this.remove(pathLine)
+
+    const paths = new LineString(pathLine.paths)
+
+    // paths.applyTransform(olProj.getTransform('EPSG:4326', 'EPSG:3857'))
+
+    const pathLineFeature = new Feature({
+      geometry: paths,
+      name: pathLine.name,
+      id:pathLine.id
+    })
+
+    const styleLine = new Style({
+      stroke: new Stroke({
+        color: '#0078d4',
+        width: 5
+      })
+    })
+    const styleHighLine = new Style({
+      stroke: new Stroke({
+        color: '#ffaa44',
+        width: 5
+      })
+    })
+
+    if (pathLine.isActive) {
+      pathLineFeature.setStyle(styleHighLine)
+    } else {
+      pathLineFeature.setStyle(styleLine)
+    }
+
+    pathLineFeature.setId(pathLine.id)
+    pathLineFeature.setProperties({
+      customize: true,
+      meta: pathLine
+    })
+
+    const pathLineSource = new VectorSource({
+      features: [pathLineFeature],
+      wrapX: false
+    })
+
+    const pathLineVectorLayer = new VectorLayer({
+      source: pathLineSource,
+      zIndex: 1
+    })
+    // pathLineVectorLayer.setZIndex(1)
+
+    if (this.openLayersHandler) {
+      this.openLayersHandler.addLayer(pathLineVectorLayer)
+    }
+
+    this.openLayerPathLines[pathLine.id] = {
+      style: pathLine.isActive? styleHighLine: styleLine,
+      feature: pathLineFeature,
+      source: pathLineSource,
+      vectorLayer: pathLineVectorLayer,
+      meta:pathLine
+    }
+  }
+
+  remove(pathLine:PathLineDataInfo) {
+    const pathLineLayer = this.openLayerPathLines[pathLine.id]
+    if (this.openLayersHandler && pathLineLayer) {
+      this.openLayersHandler.removeLayer(pathLineLayer.vectorLayer)
+    }
+  }
+
+  clear() {
+    if (this.openLayersHandler) {
+      for (const key in this.openLayerPathLines) {
+        if (Object.hasOwnProperty.call(this.openLayerPathLines, key)) {
+          const pathLineLayer = this.openLayerPathLines[key]
+          this.openLayersHandler.removeLayer(pathLineLayer.vectorLayer)
+        }
+      }
+    }
+  }
+}
+
 
 export class OpenLayerMapControl {
   openLayersHandler:Map;
@@ -345,7 +438,7 @@ export function initOpenLayerCampareMap(minMapLevel:number, maxMapLevel: number)
       extent: mapExtent,
       center: olProj.fromLonLat([116.345152, 39.946504]),
       constrainResolution: true,
-      zoom: 15,
+      zoom: 12,
       minZoom: minMapLevel,
       maxZoom: maxMapLevel
     })
@@ -360,46 +453,4 @@ export function getLngLatFromEvent(event:MapBrowserEvent<UIEvent>) {
   const {longitude, latitude} = calibrateOpenLayerLngLat(lngLat[0], lngLat[1]);
   const lngLatRes = getLngLatFromText(String(longitude), String(latitude));
   return lngLatRes;
-}
-
-export function getRectanglePathExtent(lng:number, lat:number, areaUnitM:number=30000) {
-  let areaHalf = areaUnitM / 2
-  const latStep = geoMeter2Lat(areaHalf)  // 0.13489824088780958 // 0.141085761771115935
-  let lngStep:number = 0
-  if(lat) {
-    lngStep = geoMeter2Lng(areaHalf, lat)
-  } else {
-    lngStep = geoMeter2Lng(areaHalf, 0.01)
-  }
-
-  const lnglat = {
-    lngLeft: lng - lngStep,
-    lngRight: lng + lngStep,
-    latUp: lat - latStep,
-    latDown: lat + latStep
-  }
-
-  let lnglatTemp = 0
-  if (lnglat.lngLeft > lnglat.lngRight) {
-    lnglatTemp = lnglat.lngLeft
-    lnglat.lngLeft = lnglat.lngRight
-    lnglat.lngRight = lnglatTemp
-  }
-
-  if (lnglat.latDown > lnglat.latUp) {
-    lnglatTemp = lnglat.latDown
-    lnglat.latDown = lnglat.latUp
-    lnglat.latUp = lnglatTemp
-  }
-
-  const path = [
-    [lnglat.lngLeft, lnglat.latUp],
-    [lnglat.lngRight, lnglat.latUp],
-    [lnglat.lngRight, lnglat.latDown],
-    [lnglat.lngLeft, lnglat.latDown],
-    [lnglat.lngLeft, lnglat.latUp]
-  ]
-  const extent = [lnglat.lngLeft, lnglat.latDown, lnglat.lngRight, lnglat.latUp]
-
-  return { path, extent }
 }

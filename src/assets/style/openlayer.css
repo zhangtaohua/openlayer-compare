@@ -1,3 +1,7 @@
+.ol-viewport {
+  background-color: rgba(0, 0, 0, 0);
+}
+
 .ol_popup_black {
   position: absolute;
   background-color: rgba(0,0,0,0.5);

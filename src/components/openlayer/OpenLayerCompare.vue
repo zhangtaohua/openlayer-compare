@@ -12,40 +12,50 @@
       class="mask_view"
     />
 
-    <div v-if="isShowImageContainner" id="image_containner" class="row_nw_sb_center image_containner">
-      <div class="row_nw_center_center image_left_box"></div>
-      <div class="row_nw_center_center image_right_box"></div>
-    </div>
+    <div v-if="imageDomControl.isShowMainBox" id="image_containner" class="row_nw_sb_center image_containner">
+      <div v-if="imageDomControl.isShowLeftBox" class="row_nw_center_center image_left_box"
+        @dragenter.prevent="leftBoxDragEnterHandle"
+        @dragover.prevent="leftBoxDragoverHandle"
+        @drop.prevent="leftBoxDropHandle"
+        @dragleave.prevent="leftBoxDragleaveHandle"
+      ></div>
+      <div v-else class="row_nw_center_center image_left_box image_box_hidden"></div>
 
-    <div v-if="isShowRoller" id="roller" class="roller_shutter"
-    :style="rollerRunTimeStyle"
-    @mousedown="rollerMouseDownHandle"
-    @mousemove="rollerMouseMoveHandle"
-    @mouseup="rollerMouserUpHandle"
-    ></div>
+
+      <div v-if="imageDomControl.isShowRightBox" class="row_nw_center_center image_right_box"
+        @dragenter.prevent="rightBoxDragEnterHandle"
+        @dragover.prevent="rightBoxDragoverHandle"
+        @drop.prevent="rightBoxDropHandle"
+        @dragleave.prevent="rightBoxDragleaveHandle"
+      ></div>
+      <div v-else class="row_nw_center_center image_right_box image_box_hidden"></div>
+
+      <div class="col_nw_fs_center image_list_box">
+        <div v-for="image in imageInfos" :key="'ol_image_' + image.id"
+          class="row_nw_center_center image_list_show_box">
+          <img class="image" :src="image.url" draggable="true"
+            @dragstart="imageDragstartHandle(image)"
+            @drag="imageDragHandle"
+            @dragend="imageDragendHandle"
+          >
+        </div>
+      </div>
+
+    </div>
 
   </div>
 </template>
 
 <script lang="ts">
-import jaImageUrl from '/@/assets/images/ja.jpg'
-import gymImageUrl from '/@/assets/images/gym.jpg'
-
-import { CREATEORDER, ORDERLIST, TARGETLIB, IMAGELIST, INITLEFTSIDEBAR,
-  HOMEROUTE, ORDERROUTE, SATELLITEORIBIT, ORDERDETAIL, OLTARGETLIBSHOWPOINT, OLIMAGELIBLIBSHOWIMAGETILE,
-  FROMLEFTSIDERBAR, FROMRIGHTSIDERBAR, OLMAPPOPUPINFO, OLTARGETLIBSHOWALLPOINTS, OLTARGETLIBCREATEEDITPOINT,
-  OLMAPPOPUPINFOEVENT, OLCREATEORDERSHOWCLICKPOINT, OLCREATEORDERSHOWPATHLINE, OLIMAGELIBLIBSHOWPOINT,
-  OLORDERLISTSHOWDETAIL } from '/@/common/constant/constant'
-
 import 'ol/ol.css';
 import { Map} from 'ol';
 import * as olProj from 'ol/proj';
 import PointerInteraction from 'ol/interaction/Pointer';
 
-import { defineComponent, onMounted, reactive, toRefs, computed, watch } from 'vue';
+import { defineComponent, onMounted, reactive, toRefs, ref, computed, watch } from 'vue';
 
 import {  OpenLayerMapControl,
-          OpenLayerStaticImages, 
+          OpenLayerStaticImages, OpenLayerPathLine, 
           initOpenLayerCampareMap,
           getLngLatFromEvent, getRectanglePathExtent
         } from '/@/hooks/openLayer/openLayerCompare'
@@ -54,23 +64,25 @@ import {getLngLatFromText, calibrateOpenLayerLngLat, geoMeter2Lat, geoMeter2Lng 
 
 export default defineComponent({
   name: 'OpenLayerCompare',
-  setup() {
-    let mapCurrentLevelOld = 0;
+  props:{
+    imageInfos: {
+      type: Array,
+      default() {
+        return []
+      }
+    },
+    rollerType: {
+      type:String,
+      default:"horizontalLine"   // "horizontalLine" "verticalLine" "fullAngle"
+    }
+  },
+  setup(props, ctx) {
+    const {innerHeight: windowInnerHeight, innerWidth: windowInnerWidth } = window
+
     const maxMapLevel:number = 21;
     const minMapLevel:number = 3; // 2.8657332708517589
 
-    let isShowImageContainner:boolean = false;
-    let isShowRoller:boolean = true;
-
-    let openLayersHandler:Map;
-    let pointerInteraction:PointerInteraction;
-    let mapControlHandler:OpenLayerMapControl;
-    
-    let isInitOpenLayerMapDone = false;
-    const cursor:string ='pointer';
-    let previousCursor: string | undefined | null;
-    
-    let mapControlStatus = reactive({
+    const mapControlStatus = reactive({
       isShowControl: true,
       isShowSearch: false,
       isLocked: false,
@@ -78,24 +90,85 @@ export default defineComponent({
       zoomOutIsDisable: true,
     });
 
+    const imageDomControl = reactive({
+      isShowMainBox: true,
+      isShowLeftBox: true,
+      isShowRightBox: true,
+      isShowListBox: true
+    })
+
+    let openLayersHandler:Map;
+    let pointerInteraction:PointerInteraction;
+    let mapControlHandler:OpenLayerMapControl;
+    
+    const cursor:string ='pointer';
+    let previousCursor: string | undefined | null;
+
+    let coordinateOld;
+    let FeatureOld;
+    let FeatureDeltaLngLatOld;
+    let pointFeatureMarkFeature;
 
     let staticImageLeftHandler: OpenLayerStaticImages;
-    let staticImageRightHandler: OpenLayerStaticImages; 
+    let staticImageRightHandler: OpenLayerStaticImages;
+    
+    let staticRollerHandler: OpenLayerPathLine;
+
+    let leftImageInfo:any = reactive({
+      isDroped: false,
+      imageInfo: {}
+    });
+    let rightImageInfo:any = reactive({
+      isDroped: false,
+      imageInfo: {}
+    });
+
+    let staticImageViewInfo = reactive({
+      extents: [],
+      center: []
+    })
+
+    let dropedImageCounter = ref(0)
+
 
     onMounted(() => {
       init()
     })
 
+    watch(()=>dropedImageCounter , 
+      (dropedImageCounterNew, dropedImageCounterOld) => {
+        if(dropedImageCounter.value >= 2) {
+          console.log("开始绘图")
+          hiddenAllImageBox()
+          addSimulateImage()
+        }
+      }, 
+      {
+        deep:true,
+        immediate:false
+      }
+    )
+
+    function hiddenAllImageBox() {
+      imageDomControl.isShowMainBox = false
+    }
+
     function init() {
       openLayersHandler = initOpenLayerCampareMap(minMapLevel, maxMapLevel)
       addMapControlHandler()
-      isInitOpenLayerMapDone = true
     }
 
     function addMapControlHandler() {
       mapControlHandler = new OpenLayerMapControl(openLayersHandler, minMapLevel, maxMapLevel)
       staticImageLeftHandler = new OpenLayerStaticImages(openLayersHandler);
       staticImageRightHandler = new OpenLayerStaticImages(openLayersHandler);
+
+      if(props.rollerType === "fullAngle") { 
+
+      } else {
+        staticRollerHandler = new OpenLayerPathLine(openLayersHandler)
+      }
+      
 
       pointerInteraction = new PointerInteraction({
         handleDownEvent: pointerDownEventHandle,
@@ -104,62 +177,84 @@ export default defineComponent({
         handleUpEvent: pointerUpEventHandle
       })
       openLayersHandler.addInteraction(pointerInteraction)
-      addSimulateImage()
-      mapControlHandler.flytoPoint(100, 20)
-    }
-
-    const jaLngLat = getLngLatFromText('100', '20')
-    const jaCoordinate = olProj.transform([100, 20], 'EPSG:4326', 'EPSG:3857')
-
-    const gymLngLat = getLngLatFromText('100.05', '20.02')
-    const gymCoordinate = olProj.transform([100.05, 20.02], 'EPSG:4326', 'EPSG:3857')
-
-    const jaImageInfo = {
-      isChanged: true,
-      coordinate: jaCoordinate,
-      longitude: jaLngLat.longitude,
-      longitudeText: jaLngLat.longitudeText,
-      latitude: jaLngLat.latitude,
-      latitudeText: jaLngLat.latitudeText,
-      name: 'jaNmae',
-      id: 'jaId',
-      area: 8,
-      areaUnitM: 8000,
-      areaName: '8km*8km',
-      url: jaImageUrl,
-      html: '',
-      isCanSize: false,
-      extents: [99.96171847746696, 19.96402713576325, 100.03828152253304, 20.03597286423675]
-    }
-
-    const gymImageInfo = {
-      isChanged: true,
-      coordinate: gymCoordinate,
-      longitude: gymLngLat.longitude,
-      longitudeText: gymLngLat.longitudeText,
-      latitude: gymLngLat.latitude,
-      latitudeText: gymLngLat.latitudeText,
-      name: 'gymNmae',
-      id: 'gymId',
-      area: 8,
-      areaUnitM: 8000,
-      areaName: '8km*8km',
-      url: gymImageUrl,
-      html: '',
-      isCanSize: true,
-      extents:[100.01171361086487, 19.98402713576325, 100.08828638913512, 20.05597286423675]
     }
 
     function addSimulateImage() {
-      staticImageLeftHandler.add(jaImageInfo)
-      staticImageRightHandler.add(gymImageInfo)
-
+      staticImageLeftHandler.add(leftImageInfo.imageInfo)
+      staticImageRightHandler.add(rightImageInfo.imageInfo)
+      getImageExtents();
+      addRooler();
+      mapControlHandler.flytoPoint(staticImageViewInfo.center[0], staticImageViewInfo.center[1])
     }
 
-    let coordinateOld;
-    let FeatureOld;
-    let FeatureDeltaLngLatOld;
-    let pointFeatureMarkFeature;
+    function addRooler() {
+      const {
+        longitude,
+        longitudeText, 
+        latitude,
+        latitudeText } = getLngLatFromText(String(staticImageViewInfo.center[0]), String(staticImageViewInfo.center[1]));
+
+      if(props.rollerType === "horizontalLine") { 
+        let pathStart = [longitude, -84.5]
+        pathStart = olProj.transform(pathStart, 'EPSG:4326', 'EPSG:3857')
+        let pathEnd = [longitude, 84.5]
+        pathEnd = olProj.transform(pathEnd, 'EPSG:4326', 'EPSG:3857')
+
+        const pathLineInfo = {
+          id: 'pathline',
+          name:'pathline',
+          longitude,
+          longitudeText,
+          latitude,
+          latitudeText, 
+          paths: [ pathStart, pathEnd],
+          rollerType: 'horizontalLine',
+          coordinate: [] 
+        }
+        staticRollerHandler.add(pathLineInfo)
+      } else if(props.rollerType === "verticalLine") { 
+        staticRollerHandler.add()
+      } else  if(props.rollerType === "fullAngle") { 
+
+      }
+    }
+
+    function getImageExtents() {
+      let longitudeArr = [
+        leftImageInfo.imageInfo.extents[0],
+        leftImageInfo.imageInfo.extents[2],
+        rightImageInfo.imageInfo.extents[0],
+        rightImageInfo.imageInfo.extents[2],
+      ]
+      longitudeArr.sort((a, b) => a - b)
+      
+
+      let latitudeArr = [
+        leftImageInfo.imageInfo.extents[1],
+        leftImageInfo.imageInfo.extents[3],
+        rightImageInfo.imageInfo.extents[1],
+        rightImageInfo.imageInfo.extents[3],
+      ]
+      latitudeArr.sort((a, b) => a - b)
+
+      const viewExtents = [
+        longitudeArr[0], latitudeArr[0], longitudeArr[3], latitudeArr[3], 
+      ]
+
+      const viewCenter = [
+        (longitudeArr[0] + longitudeArr[3]) / 2,
+        (latitudeArr[0] + latitudeArr[3]) / 2,
+      ]
+
+      console.log(longitudeArr, latitudeArr, viewExtents, viewCenter)
+      staticImageViewInfo.extents = viewExtents
+      staticImageViewInfo.center = viewCenter
+      return {
+        viewExtents,
+        viewCenter
+        }
+    }
+
     function pointerDownEventHandle(event:any) {
       const map = event.map
       const feature = map.forEachFeatureAtPixel(event.pixel, function(feature:any) {
@@ -177,9 +272,9 @@ export default defineComponent({
     }
 
     function pointerMoveEventHandle(event:any) {
-      console.log("move",event.coordinate)
-      // staticImageRightHandler.resizeX(gymImageInfo, event.coordinate)
-      staticImageRightHandler.resizeY(gymImageInfo, event.coordinate)
+      // console.log("move",event.coordinate)
+      staticImageRightHandler.resizeX(rightImageInfo.imageInfo, event.coordinate)
+      // staticImageRightHandler.resizeY(rightImageInfo.imageInfo, event.coordinate)
       // if (cursor) {
       //   const map = event.map
       //   var feature = map.forEachFeatureAtPixel(event.pixel, function(feature:any) {
@@ -203,6 +298,7 @@ export default defineComponent({
       // }
     }
 
+    let currentImageInfo:any;
     function pointerUpEventHandle(event:any) {
       const lnglat = olProj.transform(event.coordinate, 'EPSG:3857', 'EPSG:4326')
       coordinateOld = null;
@@ -210,36 +306,69 @@ export default defineComponent({
       return false
     }
 
-    const rollerRunTimeStyle = reactive({
-      "left": '50%'
-    })
-
-    const {innerHeight: windowInnerHeight, innerWidth: windowInnerWidth } = window
-
-    function rollerMouseDownHandle(event:MouseEvent) {
-      
+    function leftBoxDragEnterHandle() {
+      // console.log("leftBoxDragEnterHandle")
+      return true;
+    }
+    function leftBoxDragoverHandle() {
+      // console.log("leftBoxDragoverHandle")
+      return true;
+    }
+    function leftBoxDropHandle(event) {
+      leftImageInfo.isDroped = true;
+      leftImageInfo.imageInfo = currentImageInfo;
+      imageDomControl.isShowLeftBox = false;
+      dropedImageCounter.value++
+    }
+    function leftBoxDragleaveHandle() {
+      // console.log("leftBoxDragleaveHandle")
+      return true;
+    }
+    function rightBoxDragEnterHandle() {
+      // console.log("rightBoxDragEnterHandle")
+      return true;
+    }
+    function rightBoxDragoverHandle() {
+      // console.log("rightBoxDragoverHandle")
+      return true;
+    }
+    function rightBoxDropHandle() {
+      rightImageInfo.isDroped = true;
+      rightImageInfo.imageInfo = currentImageInfo;
+      imageDomControl.isShowRightBox = false;
+      dropedImageCounter.value++
+    }
+    function rightBoxDragleaveHandle() {
+      // console.log("rightBoxDragleaveHandle")
+      return true;
     }
 
-    function rollerMouseMoveHandle(event:MouseEvent) {
-      console.log("mouseMove", event)
-      rollerRunTimeStyle.left = parseInt(windowInnerWidth / 3) + 'px';
+    function imageDragstartHandle(image) {
+      currentImageInfo = image
+      return true;
     }
-
-    function rollerMouserUpHandle(event:MouseEvent) {
-
+    function imageDragHandle() {
+      return true;
+    }
+    function imageDragendHandle() {
+      return true;
     }
 
       
     return {
-      jaImageUrl,
-      gymImageUrl,
-      isShowImageContainner,
-      isShowRoller,
+      imageDomControl,
       ...toRefs(mapControlStatus),
-      rollerRunTimeStyle,
-      rollerMouseDownHandle,
-      rollerMouseMoveHandle,
-      rollerMouserUpHandle,
+      leftBoxDragEnterHandle,
+      leftBoxDragoverHandle,
+      leftBoxDropHandle,
+      leftBoxDragleaveHandle,
+      rightBoxDragEnterHandle,
+      rightBoxDragoverHandle,
+      rightBoxDropHandle,
+      rightBoxDragleaveHandle,
+      imageDragstartHandle,
+      imageDragHandle,
+      imageDragendHandle,
     }
   }
 });
@@ -292,28 +421,43 @@ export default defineComponent({
   }
 
   .image_left_box {
-    width: 49%;
+    width: 40%;
     height: 100%;
     border-radius: 12px;
     border: 1px solid burlywood;
   }
 
   .image_right_box {
-    width: 50%;
+    width: 40%;
     height: 100%;
     border-radius: 12px;
     border: 1px solid skyblue;
   }
 
-  .roller_shutter {
-    width: 10px;
-    height: 100%;
-    position: fixed;
-    top: 0;
-    left: 50%;
-    border: 1px solid springgreen;
-    background-color: springgreen;
+  .image_box_hidden {
+    border: 1px solid red;
   }
+
+  .image_list_box {
+    width: 15%;
+    height: 100%;
+    border-radius: 12px;
+    border: 1px solid paleturquoise;
+  }
+
+  .image_list_show_box {
+    width: 100%;
+    height: auto;
+    margin: 10px 0;
+  }
+
+  .image {
+    width: 98%;
+    height: auto;
+    border-radius: 12px;
+  }
+
+
 
 </style>
 
