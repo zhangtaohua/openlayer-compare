@@ -1,5 +1,8 @@
 <template>
-  <div id="openLayersMapContainner" class="map_base_containner">
+  <div id="openLayersMapContainner" class="map_base_containner"
+    @mousemove="rollerMouseMoveHandle"
+    @mouseup="rollerMouseUpHandle"
+  >
     <div class="map_box">
       <div
         id="openLayersMapBaseBox"
@@ -50,14 +53,97 @@
       </div>
     </div>
 
-    <div id="ol_popup" class="ol_popup">
-      <div id="ol_popup_content" class="ol_popup_content"></div>
+    <div v-if="rollerControl.isShow" 
+      :class="{roller_box_horizontal: rollerControl.type === 'horizontalLine',
+          roller_box_vertical: rollerControl.type === 'verticalLine',
+          roller_box_full_angle: rollerControl.type === 'fullAngle',
+        }"
+      :style="rollerControl.style"
+      @mousedown="rollerMouseDownHandle"
+      @mousemove="rollerMouseMoveHandle"
+      @mouseup="rollerMouseUpHandle"
+    >
+      <div v-if="rollerControl.type === 'fullAngle'" class="roller_box_full_angle_v"></div>
+    </div>
+
+    <div
+      v-if="isShowControl"
+      class="control_box"
+    >
+      <div class="control_zoom_box">
+        <div
+          class="control_zoom"
+          @click="gotoDevLocationHandle"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapHomeImageUrl"
+          >
+        </div>
+        <div
+          class="control_zoom"
+          @click="resetMapCampareHandle"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapBackImageUrl"
+          >
+        </div>
+        <div
+          v-if="zoomInIsDisable"
+          class="control_zoom"
+          @click="zoomInOutMapHandle(true)"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapbigDisableImageUrl"
+          >
+        </div>
+        <div
+          v-else
+          class="control_zoom"
+          @click="zoomInOutMapHandle(true)"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapbigImageUrl"
+          >
+        </div>
+        <div
+          v-if="zoomOutIsDisable"
+          class="control_zoom"
+          @click="zoomInOutMapHandle(false)"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapsamllDisableImageUrl"
+
+          >
+        </div>
+        <div
+          v-else
+          class="control_zoom"
+          @click="zoomInOutMapHandle(false)"
+        >
+          <img
+            class="control_zoom_image"
+            :src="mapsamllImageUrl"
+          >
+        </div>
+      </div>
     </div>
 
   </div>
 </template>
 
 <script lang="ts">
+import mapHomeImageUrl from '/@/assets/images/mapHome.svg'
+import mapBackImageUrl from '/@/assets/images/mapBack.png'
+import mapbigDisableImageUrl from '/@/assets/images/mapbigDisable.svg'
+import mapbigImageUrl from '/@/assets/images/mapbig.png'
+import mapsamllDisableImageUrl from '/@/assets/images/mapsamllDisable.svg'
+import mapsamllImageUrl from '/@/assets/images/mapsamll.png'
+
 import 'ol/ol.css';
 import { Map} from 'ol';
 import * as olProj from 'ol/proj';
@@ -66,9 +152,8 @@ import PointerInteraction from 'ol/interaction/Pointer';
 import { defineComponent, onMounted, reactive, toRefs, ref, computed, watch } from 'vue';
 
 import {  OpenLayerMapControl,
-          OpenLayerStaticImages, OpenLayerPathLine, OpenLayerPopup,
-          initOpenLayerCampareMap,
-          getLngLatFromEvent, getRectanglePathExtent, getMousePositionControl
+          OpenLayerStaticImages,
+          initOpenLayerCampareMap
         } from '/@/hooks/openLayer/openLayerCompare'
 
 import {getLngLatFromText, calibrateOpenLayerLngLat, geoMeter2Lat, geoMeter2Lng } from '/@/utils/common/geoCommon'
@@ -84,21 +169,22 @@ export default defineComponent({
     },
     rollerType: {
       type:String,
-      default:"horizontalLine"   // "horizontalLine" "verticalLine" "fullAngle"
+      default:"fullAngle"   // "horizontalLine" "verticalLine" "fullAngle"
     }
   },
   setup(props, ctx) {
     const {innerHeight: windowInnerHeight, innerWidth: windowInnerWidth } = window
 
+    let mapCurrentLevelOld = 0;
     const maxMapLevel:number = 21;
     const minMapLevel:number = 3; // 2.8657332708517589
 
     const mapControlStatus = reactive({
-      isShowControl: true,
+      isShowControl: false,
       isShowSearch: false,
       isLocked: false,
       zoomInIsDisable: false,
-      zoomOutIsDisable: true,
+      zoomOutIsDisable: false,
     });
 
     const imageDomControl = reactive({
@@ -108,6 +194,16 @@ export default defineComponent({
       isShowListBox: true
     })
 
+    const rollerControl = reactive({
+      isShow: false,
+      type: props.rollerType,
+      isClicked: false,
+      coordinate: [],
+      style: {},
+      top: 0,
+      left: 0,
+    })
+
     let openLayersHandler:Map;
     let pointerInteraction:PointerInteraction;
     let mapControlHandler:OpenLayerMapControl;
@@ -115,7 +211,6 @@ export default defineComponent({
     let staticImageLeftHandler: OpenLayerStaticImages;
     let staticImageRightHandler: OpenLayerStaticImages;
 
-    let staticRollerHandler: OpenLayerPopup;
 
     let leftImageInfo:any = reactive({
       isDroped: false,
@@ -138,9 +233,7 @@ export default defineComponent({
         viewCenter: [],
     }
 
-    const rollerCoordinate = {
-      coordinate: []
-    }
+    let isMapClickDownMove = false
 
     onMounted(() => {
       init()
@@ -149,9 +242,11 @@ export default defineComponent({
     watch(()=>dropedImageCounter , 
       (dropedImageCounterNew, dropedImageCounterOld) => {
         if(dropedImageCounter.value >= 2) {
-          console.log("开始绘图")
-          hiddenAllImageBox()
+          hiddenAllImageDomBox()
           addSimulateImage()
+          // show the roller dom
+          showRollerBox()
+          showMapControlBox()
         }
       }, 
       {
@@ -160,8 +255,58 @@ export default defineComponent({
       }
     )
 
-    function hiddenAllImageBox() {
+    function hiddenMapControlBox() {
+      mapControlStatus.isShowControl = false
+    }
+
+    function showMapControlBox() {
+      mapControlStatus.isShowControl = true
+    }
+
+    function hiddenAllImageDomBox() {
       imageDomControl.isShowMainBox = false
+    }
+
+    function showAllImageDomBox() {
+      imageDomControl.isShowMainBox = true
+      imageDomControl.isShowLeftBox = true
+      imageDomControl.isShowRightBox = true
+    }
+
+    function showRollerBox() {
+      rollerControl.isShow = true
+
+      rollerControl.coordinate = olProj.transform(staticImageViewInfo.center, 'EPSG:4326', 'EPSG:3857')
+
+      if(rollerControl.type === "horizontalLine") {
+          rollerControl.style = {
+            'left' :  windowInnerWidth/2 + 'px',
+            'top': '0px'
+          }
+          rollerControl.left =  windowInnerWidth/2
+          rollerControl.top = 0
+          staticImageRightHandler.resizeX(rightImageInfo.imageInfo, rollerControl.coordinate)
+        } else if(rollerControl.type === "verticalLine") {
+          rollerControl.style = {
+            'left' : '0px',
+            'top' :  windowInnerHeight/2 + 'px'
+          }
+          rollerControl.left =  0
+          rollerControl.top = windowInnerHeight/2
+          staticImageRightHandler.resizeY(rightImageInfo.imageInfo, rollerControl.coordinate)
+        } else if(rollerControl.type === "fullAngle") {
+          rollerControl.style = {
+            'left' : windowInnerWidth/2 + 'px',
+            'top' :  windowInnerHeight/2 + 'px'
+          }
+          rollerControl.left = windowInnerWidth/2
+          rollerControl.top = windowInnerHeight/2
+          staticImageRightHandler.resizeXY(rightImageInfo.imageInfo, rollerControl.coordinate)
+        }
+    }
+
+    function hiddenRollerBox() {
+      rollerControl.isShow = false
     }
 
     function init() {
@@ -173,15 +318,6 @@ export default defineComponent({
       mapControlHandler = new OpenLayerMapControl(openLayersHandler, minMapLevel, maxMapLevel)
       staticImageLeftHandler = new OpenLayerStaticImages(openLayersHandler);
       staticImageRightHandler = new OpenLayerStaticImages(openLayersHandler);
-
-      if(props.rollerType === "fullAngle") { 
-
-      } else {
-        staticRollerHandler = new OpenLayerPopup(openLayersHandler, 
-                                  'openLayersMapContainner', 'ol_popup',
-                                  'ol_popup_content','popup_with_event')
-        staticRollerHandler.add()
-      }
 
       openLayersHandler.on('moveend', (event) => {
         mapRenderCompleteedHandle(event)
@@ -200,6 +336,16 @@ export default defineComponent({
       const { viewSize, viewCenter } = mapControlHandler.getDefaultSize()
       mapCurrentViewSize.viewSize = viewSize
       mapCurrentViewSize.viewCenter = viewCenter
+
+      const currentLevel = mapControlHandler.getZoom()
+      if(mapCurrentLevelOld !== currentLevel) {
+        mapCurrentLevelOld = currentLevel
+        const zoomInOutISDisable = mapControlHandler.disEnableZoomControl(currentLevel)
+        mapControlStatus.zoomInIsDisable = zoomInOutISDisable.zoomInIsDisable
+        mapControlStatus.zoomOutIsDisable = zoomInOutISDisable.zoomOutIsDisable
+      }
+
+      updateMapCompareShow()
     }
 
     function addSimulateImage() {
@@ -208,21 +354,18 @@ export default defineComponent({
 
       // fit the views
       getImageExtents();
-      // addRollerLine();
       mapControlHandler.flytoPoint(staticImageViewInfo.center[0], staticImageViewInfo.center[1])
       mapControlHandler.fitView(staticImageViewInfo.extents)
-
-      // show the roller dom
-      setTimeout(() => {
-        addRollerPopup()
-      }, 100)
     }
 
-    function addRollerPopup() {
-      rollerCoordinate.coordinate[0] = mapCurrentViewSize.viewCenter[0]
-      rollerCoordinate.coordinate[1] = mapCurrentViewSize.viewSize[1]
-      // rollerCoordinate.coordinate = mapControlHandler.getPopupCoordinate()
-      staticRollerHandler.showPopup(rollerCoordinate)
+    function removeSimulateImage() {
+      staticImageLeftHandler.remove(leftImageInfo.imageInfo)
+      staticImageRightHandler.remove(rightImageInfo.imageInfo)
+      dropedImageCounter.value = 0
+      leftImageInfo.isDroped = false
+      leftImageInfo.imageInfo = {}
+      rightImageInfo.isDroped = false
+      rightImageInfo.imageInfo = {}
     }
 
     function getImageExtents() {
@@ -260,86 +403,35 @@ export default defineComponent({
         }
     }
 
-    let isRollerDomCanMove = false
-    let isMapClickDownMove = false
-
-    const cursor:string ='pointer';
-    let previousCursor: string | undefined | null;
-
-    let coordinateOld;
-    let FeatureOld;
-    let FeatureDeltaLngLatOld;
-    let pointFeatureMarkFeature;
-
     function pointerDownEventHandle(event:any) {
-      coordinateOld = event.coordinate
-      
-      // const map = event.map
-      // const feature = map.forEachFeatureAtPixel(event.pixel, function(feature) {
-      //   if (feature.getId() === 'popup_with_event') {
-      //     return feature
-      //   }
-      // })
-      console.log("down0",  event)
       isMapClickDownMove = true
-      if(staticRollerHandler.isPopupOverlayClicked) {
-        console.log("down1")
-        return true
-      } else {
-        return false
-      }
+      return false
     }
 
     function pointerDragEventHandle(event:any) {
-      console.log("drag")
-      if(staticRollerHandler.isPopupOverlayClicked) {
-        rollerCoordinate.coordinate[0] = event.coordinate[0]
-        rollerCoordinate.coordinate[1] = mapCurrentViewSize.viewSize[1]
-        // rollerCoordinate.coordinate = mapControlHandler.getPopupCoordinate()
-        staticRollerHandler.showPopup(rollerCoordinate)
-      }
+      // console.log("drag")
+      // 知道可不可以删除的
     }
 
     function pointerMoveEventHandle(event:any) {
-      console.log("moveed")
       if(isMapClickDownMove) {
-        mapRenderCompleteedHandle({}) 
-        addRollerPopup()
+        updateMapCompareShow()
       }
-      staticImageRightHandler.resizeX(rightImageInfo.imageInfo, rollerCoordinate.coordinate)
-      
-      // staticImageRightHandler.resizeY(rightImageInfo.imageInfo, event.coordinate)
-      // if (cursor) {
-      //   const map = event.map
-      //   var feature = map.forEachFeatureAtPixel(event.pixel, function(feature:any) {
-      //   const featureProperties = feature.getProperties()
-      //   const featureId = feature.getId()
-      //     if (featureProperties && featureProperties.customize ) {
-      //       return feature
-      //     }
-      //   })
-      //   var element = event.map.getTargetElement()
-      //   if (feature) {
-      //     const popupData = feature.values_.meta
-      //     if (element.style.cursor != cursor) {
-      //       previousCursor = element.style.cursor
-      //       element.style.cursor = cursor
-      //     }
-      //   } else if (previousCursor !== undefined) {
-      //     element.style.cursor = previousCursor
-      //     previousCursor = undefined
-      //   }
-      // }
     }
 
+    function updateMapCompareShow() {
+      rollerControl.coordinate = openLayersHandler.getCoordinateFromPixel([rollerControl.left, rollerControl.top])
+      if(rollerControl.type === "horizontalLine") {
+        staticImageRightHandler.resizeX(rightImageInfo.imageInfo, rollerControl.coordinate)
+      } else if(rollerControl.type === "verticalLine") {
+        staticImageRightHandler.resizeY(rightImageInfo.imageInfo, rollerControl.coordinate)
+      } else if(rollerControl.type === "fullAngle") {
+        staticImageRightHandler.resizeXY(rightImageInfo.imageInfo, rollerControl.coordinate)
+      }
+    }
     
     function pointerUpEventHandle(event:any) {
-      console.log('pointerUpEventHandle')
-      isRollerDomCanMove = false
       isMapClickDownMove = false
-      // const lnglat = olProj.transform(event.coordinate, 'EPSG:3857', 'EPSG:4326')
-      coordinateOld = null;
-      FeatureOld = null;
       return false
     }
 
@@ -350,9 +442,6 @@ export default defineComponent({
       return true;
     }
     function leftBoxDragoverHandle(event:any) {
-      const coordinate = openLayersHandler.getEventCoordinate(event)
-      console.log("leftBoxDragoverHandle", event, coordinate)
-
       return true;
     }
     function leftBoxDropHandle(event) {
@@ -395,9 +484,75 @@ export default defineComponent({
       return true;
     }
 
+    function rollerMouseDownHandle(event) {
+      rollerControl.isClicked = true
+    }
+
+    function rollerMouseMoveHandle(event) {
+      if(rollerControl.isClicked) {
+        rollerControl.coordinate =  openLayersHandler.getEventCoordinate(event)
+        if(rollerControl.type === "horizontalLine") {
+          rollerControl.style = {
+            'left' :  event.clientX + 'px',
+            'top': '0px'
+          }
+          rollerControl.left = event.clientX
+          rollerControl.top = 0
+          staticImageRightHandler.resizeX(rightImageInfo.imageInfo, rollerControl.coordinate)
+        } else if(rollerControl.type === "verticalLine") {
+          rollerControl.style = {
+            'left' : '0px',
+            'top' :  event.clientY + 'px'
+          }
+          rollerControl.left = 0
+          rollerControl.top = event.clientY
+          staticImageRightHandler.resizeY(rightImageInfo.imageInfo, rollerControl.coordinate)
+        } else if(rollerControl.type === "fullAngle") {
+          rollerControl.style = {
+            'left' : event.clientX + 'px',
+            'top' :  event.clientY + 'px'
+          }
+          rollerControl.left = event.clientX
+          rollerControl.top = event.clientY
+          staticImageRightHandler.resizeXY(rightImageInfo.imageInfo, rollerControl.coordinate)
+        }
+      }
+    }
+
+    function rollerMouseUpHandle(event) {
+      rollerControl.isClicked = false
+      isMapClickDownMove = false
+    }
+
+    function gotoDevLocationHandle() {
+      mapControlHandler.flytoPoint(staticImageViewInfo.center[0], staticImageViewInfo.center[1])
+      mapControlHandler.fitView(staticImageViewInfo.extents)
+      showRollerBox()
+    }
+
+    function resetMapCampareHandle() {
+      removeSimulateImage()
+      hiddenRollerBox()
+      hiddenMapControlBox()
+      showAllImageDomBox()
+    }
+
+    function  zoomInOutMapHandle(isZoom:boolean) {
+      const zoomInOutISDisable = mapControlHandler.zoomInOutEarth(isZoom)
+      mapControlStatus.zoomInIsDisable = zoomInOutISDisable.zoomInIsDisable
+      mapControlStatus.zoomOutIsDisable = zoomInOutISDisable.zoomOutIsDisable
+    }
+
       
     return {
+      mapHomeImageUrl,
+      mapBackImageUrl,
+      mapbigDisableImageUrl,
+      mapbigImageUrl,
+      mapsamllDisableImageUrl,
+      mapsamllImageUrl,
       imageDomControl,
+      rollerControl,
       ...toRefs(mapControlStatus),
       leftImageInfo,
       rightImageInfo,
@@ -412,6 +567,12 @@ export default defineComponent({
       imageDragstartHandle,
       imageDragHandle,
       imageDragendHandle,
+      rollerMouseDownHandle,
+      rollerMouseMoveHandle,
+      rollerMouseUpHandle,
+      gotoDevLocationHandle,
+      resetMapCampareHandle,
+      zoomInOutMapHandle,
     }
   }
 });
@@ -500,17 +661,87 @@ export default defineComponent({
     border-radius: 12px;
   }
 
-  .roller_line {
+  .roller_box_horizontal {
+    position: fixed;
     width: 10px;
     height: 100vh;
     border: 1px solid red;
     background-color: red;
-    position: fixed;
     top: 0;
     left: 50%;
   }
 
+  .roller_box_vertical {
+    position: fixed;
+    width: 100vw;
+    height: 10px;
+    border: 1px solid red;
+    background-color: red;
+    top: 50%;
+    left: 0;
+  }
 
+  .roller_box_full_angle {
+    position: fixed;
+    width: 100px;
+    height: 10px;
+    border: 1px solid red;
+    background-color: red;
+    top: 50%;
+    left: 50%;
+  }
+
+  .roller_box_full_angle_v {
+    position: relative;
+    width: 10px;
+    height: 100px;
+    border: 1px solid red;
+    background-color: red;
+    top: -91px;
+    left: -10px;
+  }
+
+  .control_box {
+    width: 40px;
+    height: 160px;
+    position: fixed;
+    /* bottom: 50%; */
+    bottom: 120px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: transparent;
+  }
+
+  .control_zoom_image {
+    width: 20px;
+    height: 20px;
+  }
+
+  .control_zoom_box {
+    width: 40px;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  .control_zoom {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #FFFFFF;
+    border: 1px solid #999999;
+  }
+
+  .control_zoom_disable {
+    background-color: #999999;
+  }
 
 </style>
 
