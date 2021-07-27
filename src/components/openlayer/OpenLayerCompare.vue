@@ -50,10 +50,8 @@
       </div>
     </div>
 
-    <div v-show="rollerControl.isShowRoller"
-      id="roller_mouse" 
-      class="roller_line"  
-    >
+    <div id="ol_popup" class="ol_popup">
+      <div id="ol_popup_content" class="ol_popup_content"></div>
     </div>
 
   </div>
@@ -68,7 +66,7 @@ import PointerInteraction from 'ol/interaction/Pointer';
 import { defineComponent, onMounted, reactive, toRefs, ref, computed, watch } from 'vue';
 
 import {  OpenLayerMapControl,
-          OpenLayerStaticImages, OpenLayerPathLine, 
+          OpenLayerStaticImages, OpenLayerPathLine, OpenLayerPopup,
           initOpenLayerCampareMap,
           getLngLatFromEvent, getRectanglePathExtent, getMousePositionControl
         } from '/@/hooks/openLayer/openLayerCompare'
@@ -110,26 +108,14 @@ export default defineComponent({
       isShowListBox: true
     })
 
-    const rollerControl = reactive({
-      isShowRoller: false
-    })
-
     let openLayersHandler:Map;
     let pointerInteraction:PointerInteraction;
     let mapControlHandler:OpenLayerMapControl;
     
-    const cursor:string ='pointer';
-    let previousCursor: string | undefined | null;
-
-    let coordinateOld;
-    let FeatureOld;
-    let FeatureDeltaLngLatOld;
-    let pointFeatureMarkFeature;
-
     let staticImageLeftHandler: OpenLayerStaticImages;
     let staticImageRightHandler: OpenLayerStaticImages;
-    
-    let staticRollerHandler: OpenLayerPathLine;
+
+    let staticRollerHandler: OpenLayerPopup;
 
     let leftImageInfo:any = reactive({
       isDroped: false,
@@ -146,6 +132,15 @@ export default defineComponent({
     })
 
     let dropedImageCounter = ref(0)
+
+    const mapCurrentViewSize = {
+        viewSize: [],
+        viewCenter: [],
+    }
+
+    const rollerCoordinate = {
+      coordinate: []
+    }
 
     onMounted(() => {
       init()
@@ -167,7 +162,6 @@ export default defineComponent({
 
     function hiddenAllImageBox() {
       imageDomControl.isShowMainBox = false
-      rollerControl.isShowRoller = true
     }
 
     function init() {
@@ -183,10 +177,16 @@ export default defineComponent({
       if(props.rollerType === "fullAngle") { 
 
       } else {
-        staticRollerHandler = new OpenLayerPathLine(openLayersHandler)
+        staticRollerHandler = new OpenLayerPopup(openLayersHandler, 
+                                  'openLayersMapContainner', 'ol_popup',
+                                  'ol_popup_content','popup_with_event')
+        staticRollerHandler.add()
       }
-      
 
+      openLayersHandler.on('moveend', (event) => {
+        mapRenderCompleteedHandle(event)
+      })
+      
       pointerInteraction = new PointerInteraction({
         handleDownEvent: pointerDownEventHandle,
         handleDragEvent: pointerDragEventHandle,
@@ -196,44 +196,33 @@ export default defineComponent({
       openLayersHandler.addInteraction(pointerInteraction)
     }
 
+    function mapRenderCompleteedHandle(event:MapBrowserEvent<UIEvent>) {
+      const { viewSize, viewCenter } = mapControlHandler.getDefaultSize()
+      mapCurrentViewSize.viewSize = viewSize
+      mapCurrentViewSize.viewCenter = viewCenter
+    }
+
     function addSimulateImage() {
       staticImageLeftHandler.add(leftImageInfo.imageInfo)
       staticImageRightHandler.add(rightImageInfo.imageInfo)
+
+      // fit the views
       getImageExtents();
-      addRooler();
+      // addRollerLine();
       mapControlHandler.flytoPoint(staticImageViewInfo.center[0], staticImageViewInfo.center[1])
+      mapControlHandler.fitView(staticImageViewInfo.extents)
+
+      // show the roller dom
+      setTimeout(() => {
+        addRollerPopup()
+      }, 100)
     }
 
-    function addRooler() {
-      const {
-        longitude,
-        longitudeText, 
-        latitude,
-        latitudeText } = getLngLatFromText(String(staticImageViewInfo.center[0]), String(staticImageViewInfo.center[1]));
-
-      if(props.rollerType === "horizontalLine") { 
-        let pathStart = [longitude, -84.5]
-        pathStart = olProj.transform(pathStart, 'EPSG:4326', 'EPSG:3857')
-        let pathEnd = [longitude, 84.5]
-        pathEnd = olProj.transform(pathEnd, 'EPSG:4326', 'EPSG:3857')
-
-        const pathLineInfo = {
-          id: 'pathline',
-          name:'pathline',
-          longitude,
-          longitudeText,
-          latitude,
-          latitudeText, 
-          paths: [ pathStart, pathEnd],
-          rollerType: 'horizontalLine',
-          coordinate: [] 
-        }
-        staticRollerHandler.add(pathLineInfo)
-      } else if(props.rollerType === "verticalLine") { 
-        staticRollerHandler.add()
-      } else  if(props.rollerType === "fullAngle") { 
-
-      }
+    function addRollerPopup() {
+      rollerCoordinate.coordinate[0] = mapCurrentViewSize.viewCenter[0]
+      rollerCoordinate.coordinate[1] = mapCurrentViewSize.viewSize[1]
+      // rollerCoordinate.coordinate = mapControlHandler.getPopupCoordinate()
+      staticRollerHandler.showPopup(rollerCoordinate)
     }
 
     function getImageExtents() {
@@ -263,7 +252,6 @@ export default defineComponent({
         (latitudeArr[0] + latitudeArr[3]) / 2,
       ]
 
-      console.log(longitudeArr, latitudeArr, viewExtents, viewCenter)
       staticImageViewInfo.extents = viewExtents
       staticImageViewInfo.center = viewCenter
       return {
@@ -272,25 +260,54 @@ export default defineComponent({
         }
     }
 
-    function pointerDownEventHandle(event:any) {
-      const map = event.map
-      const feature = map.forEachFeatureAtPixel(event.pixel, function(feature:any) {
-        if (feature.getId() === 'createOrderPoint') {
-          return feature
-        }
-      })
-      if (feature) {
+    let isRollerDomCanMove = false
+    let isMapClickDownMove = false
 
+    const cursor:string ='pointer';
+    let previousCursor: string | undefined | null;
+
+    let coordinateOld;
+    let FeatureOld;
+    let FeatureDeltaLngLatOld;
+    let pointFeatureMarkFeature;
+
+    function pointerDownEventHandle(event:any) {
+      coordinateOld = event.coordinate
+      
+      // const map = event.map
+      // const feature = map.forEachFeatureAtPixel(event.pixel, function(feature) {
+      //   if (feature.getId() === 'popup_with_event') {
+      //     return feature
+      //   }
+      // })
+      console.log("down0",  event)
+      isMapClickDownMove = true
+      if(staticRollerHandler.isPopupOverlayClicked) {
+        console.log("down1")
+        return true
+      } else {
+        return false
       }
-      return !!feature
     }
 
     function pointerDragEventHandle(event:any) {
+      console.log("drag")
+      if(staticRollerHandler.isPopupOverlayClicked) {
+        rollerCoordinate.coordinate[0] = event.coordinate[0]
+        rollerCoordinate.coordinate[1] = mapCurrentViewSize.viewSize[1]
+        // rollerCoordinate.coordinate = mapControlHandler.getPopupCoordinate()
+        staticRollerHandler.showPopup(rollerCoordinate)
+      }
     }
 
     function pointerMoveEventHandle(event:any) {
-      // console.log("move",event.coordinate)
-      staticImageRightHandler.resizeX(rightImageInfo.imageInfo, event.coordinate)
+      console.log("moveed")
+      if(isMapClickDownMove) {
+        mapRenderCompleteedHandle({}) 
+        addRollerPopup()
+      }
+      staticImageRightHandler.resizeX(rightImageInfo.imageInfo, rollerCoordinate.coordinate)
+      
       // staticImageRightHandler.resizeY(rightImageInfo.imageInfo, event.coordinate)
       // if (cursor) {
       //   const map = event.map
@@ -315,20 +332,27 @@ export default defineComponent({
       // }
     }
 
-    let currentImageInfo:any;
+    
     function pointerUpEventHandle(event:any) {
-      const lnglat = olProj.transform(event.coordinate, 'EPSG:3857', 'EPSG:4326')
+      console.log('pointerUpEventHandle')
+      isRollerDomCanMove = false
+      isMapClickDownMove = false
+      // const lnglat = olProj.transform(event.coordinate, 'EPSG:3857', 'EPSG:4326')
       coordinateOld = null;
       FeatureOld = null;
       return false
     }
 
+    let currentImageInfo:any;
+
     function leftBoxDragEnterHandle() {
       // console.log("leftBoxDragEnterHandle")
       return true;
     }
-    function leftBoxDragoverHandle() {
-      // console.log("leftBoxDragoverHandle")
+    function leftBoxDragoverHandle(event:any) {
+      const coordinate = openLayersHandler.getEventCoordinate(event)
+      console.log("leftBoxDragoverHandle", event, coordinate)
+
       return true;
     }
     function leftBoxDropHandle(event) {
@@ -374,7 +398,6 @@ export default defineComponent({
       
     return {
       imageDomControl,
-      rollerControl,
       ...toRefs(mapControlStatus),
       leftImageInfo,
       rightImageInfo,

@@ -307,6 +307,17 @@ export class OpenLayerMapControl {
     this.openLayersViewer.setRotation(rotation)
   }
 
+  fitView(extents:any) {
+    let extentsNew = olProj.transformExtent(extents, 'EPSG:4326', 'EPSG:3857');
+    const resolution = this.openLayersViewer.getResolutionForExtent(extentsNew)
+    this.openLayersViewer.setResolution(resolution)
+    this.openLayersViewer.fit(extentsNew, {
+      // constrainResolution: false,
+      // earest:true,
+      nearest:true
+    })
+  }
+
   flytoPoint(longitude:number, latitude:number) {
     const center = olProj.fromLonLat([longitude, latitude])
     this.openLayersViewer.setCenter(center)
@@ -423,24 +434,107 @@ export class OpenLayerMapControl {
     return size
   }
 
+  getDefaultSize() {
+    const arrSize = this.openLayersHandler.getSize()
+    const arrViewSize = this.openLayersViewer.calculateExtent(arrSize)
+    const center = [
+      (arrViewSize[0] + arrViewSize[2]) / 2,
+      (arrViewSize[1] + arrViewSize[3]) / 2,
+    ]
+    return {
+      viewSize: arrViewSize,
+      viewCenter: center
+    }
+  }
+
+  getPopupCoordinate() {
+    const arrSize = this.openLayersHandler.getSize()
+    const arrViewSize = this.openLayersViewer.calculateExtent(arrSize)
+    return[(arrViewSize[0] + arrViewSize[2]) / 2, arrViewSize[1]]
+  }
+
 }
 
+export class OpenLayerPopup {
+  openLayersHandler:Map;
+  mapDomContainner:HTMLElement | null;
+  overlayDomContainner:HTMLElement | null;
+  overlayDomContent:HTMLElement | null;
+  openLayerOverlay:Overlay;
+  isPopupOverlayClicked:boolean;
+
+  constructor(openLayersHandler:Map, containner:string, 
+    pupupContainner:string, pupupContent:string,
+    overlayId:string) {
+    this.openLayersHandler = openLayersHandler
+    this.mapDomContainner = document.getElementById(containner);
+
+    this.overlayDomContainner = document.getElementById(pupupContainner);
+    this.overlayDomContent = document.getElementById(pupupContent);
+
+    if(this.overlayDomContainner) {
+      this.openLayerOverlay = new Overlay({
+        id: overlayId,
+        element: this.overlayDomContainner,
+        stopEvent: false,
+        autoPan: false,
+        autoPanAnimation: {
+          duration: 0,
+        },
+      });
+    }
+
+    // this.overlayDomContainner.addEventListener('click', this.onClickHandle, false)
+    this.overlayDomContainner.addEventListener('mousedown', this.onMouseDownHandle, false)
+    this.overlayDomContainner.addEventListener('mouseup', this.onMouseUpHandle, false)
+    this.mapDomContainner.addEventListener('mouseup', this.onMouseUpHandle, false)
+
+  }
+
+  onClickHandle = (event)=> {
+    this.isPopupOverlayClicked = true
+    return true
+  }
+
+  onMouseDownHandle = (event)=> {
+    console.log('onMouseDownHandle')
+    this.isPopupOverlayClicked = true
+    return true
+  }
+
+  onMouseUpHandle = (event)=> {
+    this.isPopupOverlayClicked = false
+    return true
+  }
+
+  // need arrow funcion!!!
+  close = () => {
+    this.openLayerOverlay.setPosition(undefined);
+    return false;
+  };
+
+  add() {
+    this.openLayersHandler?.addOverlay(this.openLayerOverlay)
+  }
+
+  remove() {
+    this.openLayersHandler?.addOverlay(this.openLayerOverlay)
+  }
+
+  // showPopup(event:MapBrowserEvent<UIEvent>) {
+  showPopup(event:any) {
+    const coordinate = event.coordinate;
+    this.openLayerOverlay.setPosition(coordinate);
+  }
+}
+
+
 export function initOpenLayerCampareMap(minMapLevel:number, maxMapLevel: number) {
-  const mousePositionControl = new MousePosition({
-    coordinateFormat: createStringXY(6),
-    projection: 'EPSG:3857',
-    // comment the following two lines to have the mouse position
-    // be placed within the map.
-    // className: '',
-    // target: document.getElementById('roller_mouse'),
-  })
-
-
   const controls = olControl.defaults({
     attribution: false,
     zoom: false,
     rotate: false
-  }).extend([mousePositionControl]);
+  }).extend([]);
 
   const mapExtent = olProj.transformExtent([-180, -84.5, 180, 84.5], 'EPSG:4326', 'EPSG:3857');
 
@@ -467,18 +561,4 @@ export function getLngLatFromEvent(event:MapBrowserEvent<UIEvent>) {
   const {longitude, latitude} = calibrateOpenLayerLngLat(lngLat[0], lngLat[1]);
   const lngLatRes = getLngLatFromText(String(longitude), String(latitude));
   return lngLatRes;
-}
-
-
-export function getMousePositionControl(id:string, projection:string='EPSG:3857', precision:number=6) {
-  const mousePositionControl = new MousePosition({
-    coordinateFormat: createStringXY(precision),
-    projection: projection,
-    // comment the following two lines to have the mouse position
-    // be placed within the map.
-    // className: '',
-    target: document.getElementById(id),
-  })
-
-  return mousePositionControl;
 }
