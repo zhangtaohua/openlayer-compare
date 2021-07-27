@@ -23,16 +23,3 @@ declare interface StaticImageDataInfo {
   url: string;
   extents:Array<number>;
 }
-
-
-declare interface PathLineDataInfo {
-  id: string | number;
-  name:string;
-  longitude:number;
-  longitudeText?:string;
-  latitude:number;
-  latitudeText?:string;
-  paths: any;
-  rollerType?: string;
-  coordinate?:any;
-}
